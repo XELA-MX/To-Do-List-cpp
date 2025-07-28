@@ -16,8 +16,11 @@ private:
 	static bool bDraw;
 
 public:
+	static void CleanupCPUUsage();
 	static void Active();
 	static bool isActive();
+	static void InitCPUUsage();
+	static float GetCPUUsagePercent();
 	static void Draw();
 	static void LoadImages();
 };

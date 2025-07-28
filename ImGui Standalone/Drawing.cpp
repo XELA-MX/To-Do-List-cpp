@@ -1,4 +1,8 @@
-#include "Drawing.h"
+Ôªø#include "Drawing.h"
+#include <windows.h>
+#include <pdh.h>
+#include <PdhMsg.h>
+#pragma comment(lib, "pdh.lib")
 
 LPCSTR Drawing::lpWindowName = "To Do List!";
 ImVec2 Drawing::vWindowSize = { 350, 50 };
@@ -37,6 +41,20 @@ static bool showNotification = false;
 static float notificationTime = 0.0f;
 static std::string notificationMsg;
 
+// CPU
+PDH_HQUERY cpuQuery;
+PDH_HCOUNTER cpuTotal;
+
+void Drawing::CleanupCPUUsage()
+{
+	if (cpuQuery) {
+		PdhCloseQuery(cpuQuery);
+		cpuQuery = nullptr;
+		cpuTotal = nullptr;
+	}
+}
+
+
 struct ToDo {
 	char task[512];
 	int min;
@@ -61,7 +79,46 @@ void ShowNotification(const std::string& msg) {
 	notificationTime = ImGui::GetTime(); // Hora de inicio
 }
 
-// FunciÛn para dibujar la notificaciÛn, ll·mala cada frame en tu render loop
+void Drawing::InitCPUUsage() {
+	PdhOpenQuery(NULL, NULL, &cpuQuery);
+	PdhAddCounter(cpuQuery, L"\\Processor(_Total)\\% Processor Time", NULL, &cpuTotal);
+	PdhCollectQueryData(cpuQuery);
+}
+
+float Drawing::GetCPUUsagePercent() {
+	static float lastCPU = 0.0f;
+	static double lastUpdateTime = 0.0;
+	double now = ImGui::GetTime();
+
+	// Solo actualiza cada 0.8 seg para suavidad y evitar Sleep en UI
+	const double UPDATE_INTERVAL = 0.8;
+
+	if (cpuQuery && cpuTotal && (now - lastUpdateTime > UPDATE_INTERVAL))
+	{
+		PdhCollectQueryData(cpuQuery);
+		// Recolecta dos veces: primera sin formatear, segunda valida
+		Sleep(100); // Necesario para un delta v√°lido entre samples (PDH necesita al menos 100ms)
+		PdhCollectQueryData(cpuQuery);
+
+		PDH_FMT_COUNTERVALUE counterVal;
+		if (PdhGetFormattedCounterValue(cpuTotal, PDH_FMT_DOUBLE, NULL, &counterVal) == ERROR_SUCCESS)
+			lastCPU = static_cast<float>(counterVal.doubleValue);
+
+		lastUpdateTime = now;
+	}
+	return lastCPU;
+}
+
+float GetRamUsagePercent() {
+	MEMORYSTATUSEX memInfo;
+	memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+	GlobalMemoryStatusEx(&memInfo);
+	DWORDLONG total = memInfo.ullTotalPhys;
+	DWORDLONG used = total - memInfo.ullAvailPhys;
+	return static_cast<float>(used * 100.0 / total);
+}
+
+// Funci√≥n para dibujar la notificaci√≥n, ll√°mala cada frame en tu render loop
 void RenderNotification() {
 	const float displayDuration = 3.0f; // Total seconds
 	const float fadeTime = 0.25f;       // Fade in/out time en segundos
@@ -78,7 +135,7 @@ void RenderNotification() {
 		if (elapsed < fadeTime) alpha = elapsed / fadeTime;
 		else if (elapsed > displayDuration - fadeTime) alpha = (displayDuration - elapsed) / fadeTime;
 
-		// Fondo semi-claro m·s visible
+		// Fondo semi-claro m√°s visible
 		ImU32 bgColor = IM_COL32(255, 236, 150, int(230 * alpha)); // Amarillo pastel claro y opacidad animada
 		ImU32 borderColor = IM_COL32(228, 183, 18, int(255 * alpha)); // Amarillo fuerte para el borde
 
@@ -87,12 +144,12 @@ void RenderNotification() {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 3.0f);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, bgColor);
 		ImGui::PushStyleColor(ImGuiCol_Border, borderColor);
-		ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(70, 49, 6, int(255 * alpha))); // MarrÛn oscuro
+		ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(70, 49, 6, int(255 * alpha))); // Marr√≥n oscuro
 
-		// UbicaciÛn: centro-base (puedes ajustar "y" para subir/bajar)
+		// Ubicaci√≥n: centro-base (puedes ajustar "y" para subir/bajar)
 		ImVec2 windowSize(400, 70);
 		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-		float y = center.y + ImGui::GetMainViewport()->Size.y * 0.35f; // M·s cerca de la base
+		float y = center.y + ImGui::GetMainViewport()->Size.y * 0.35f; // M√°s cerca de la base
 		ImGui::SetNextWindowPos(ImVec2(center.x - windowSize.x / 2, 900), ImGuiCond_Always);
 		ImGui::SetNextWindowSize(windowSize);
 
@@ -120,19 +177,19 @@ void RenderNotification() {
 
 void DrawGlowingRectRelative(ImVec2 p0, ImVec2 p1, ImColor color, float glow_intensity, int glow_layers)
 {
-	// p0 y p1: coordenadas relativas al ·rea interna de la ventana ImGui
+	// p0 y p1: coordenadas relativas al √°rea interna de la ventana ImGui
 
-	// Calcula la posiciÛn absoluta en pantalla desde el ·rea cliente de la ventana
-	ImVec2 window_pos = ImGui::GetWindowPos();     // Esquina superior izquierda de la ventana (incluido el tÌtulo y bordes)
-	ImVec2 content_pos = ImGui::GetCursorScreenPos(); // Esquina superior izquierda del ·rea interna de la ventana (donde empiezan los widgets)
+	// Calcula la posici√≥n absoluta en pantalla desde el √°rea cliente de la ventana
+	ImVec2 window_pos = ImGui::GetWindowPos();     // Esquina superior izquierda de la ventana (incluido el t√≠tulo y bordes)
+	ImVec2 content_pos = ImGui::GetCursorScreenPos(); // Esquina superior izquierda del √°rea interna de la ventana (donde empiezan los widgets)
 
 	ImVec2 base_p0 = ImVec2(content_pos.x + p0.x, content_pos.y + p0.y);
 	ImVec2 base_p1 = ImVec2(content_pos.x + p1.x, content_pos.y + p1.y);
 
-	// Dibuja el glow como antes, pero usando el draw list de la ventana actual (°esto mantiene la posiciÛn relativa correcta!)
+	// Dibuja el glow como antes, pero usando el draw list de la ventana actual (¬°esto mantiene la posici√≥n relativa correcta!)
 	ImDrawList* window_draw_list = ImGui::GetWindowDrawList();
 
-	// Rect·ngulo base
+	// Rect√°ngulo base
 	window_draw_list->AddRect(base_p0, base_p1, color, 0.0f, 0, 2.0f);
 
 	// Glow por capas, igual que antes
@@ -149,7 +206,7 @@ void DrawGlowingRectRelative(ImVec2 p0, ImVec2 p1, ImColor color, float glow_int
 			0.0f, 0, thickness);
 	}
 
-	// Opcional: reserva espacio en el layout de ImGui para este rect·ngulo
+	// Opcional: reserva espacio en el layout de ImGui para este rect√°ngulo
 	ImGui::Dummy(ImVec2(p1.x - p0.x, p1.y - p0.y));
 }
 
@@ -168,7 +225,7 @@ void drawList() {
 			ImGui::Text("No tienes tareas pendientes!");
 		}
 		else {
-			// Copia para saber si alguna tarea se elimina (Ìndice a borrar)
+			// Copia para saber si alguna tarea se elimina (√≠ndice a borrar)
 			int taskToDelete = -1;
 
 			// Recorre todas las tareas
@@ -187,7 +244,7 @@ void drawList() {
 
 				ImGui::SameLine();
 
-				// BotÛn "Eliminar" (puedes cambiar el texto a un Ìcono con unicode o usar im·genes)
+				// Bot√≥n "Eliminar" (puedes cambiar el texto a un √≠cono con unicode o usar im√°genes)
 				if (ImGui::Button("Eliminar")) {
 					taskToDelete = (int)i;   // Marca la tarea para borrar
 				}
@@ -216,6 +273,7 @@ void addTask() {
 		localtime_s(&now, &t);
 
 		hora = now.tm_hour;
+		hour_min = hora;
 		if (hour > hora) {
 			minute_min = 0;
 		}
@@ -263,7 +321,7 @@ void addTask() {
 
 			ImGui::Dummy(ImVec2(0, 10));
 
-			// BotÛn de agregar la tarea
+			// Bot√≥n de agregar la tarea
 			ImGui::SetCursorPos(ImVec2(10 , ImGui::GetWindowHeight() - 40));
 			if (ImGui::Button("Agregar tarea!", ImVec2(ImGui::GetWindowWidth() - 20, 20))) {
 				if (!strcmp(task, "")) {
@@ -276,6 +334,7 @@ void addTask() {
 					newTask.hour = hour;
 
 					toDoList.push_back(newTask);
+					ShowNotification("Tarea agregada!");
 				}
 
 			}
@@ -284,13 +343,64 @@ void addTask() {
 	}
 }
 
+// Prototipo, p√°sale tus datos reales
+void waterMark(float cpuUsagePercent, float ramUsagePercent)
+{
+	// ------ PAR√ÅMETROS ------
+	static const char* markText = "To Do List";
+	ImVec4 accent = ImVec4(77 / 255.f, 134 / 255.f, 240 / 255.f, 1.f);   // Azul moderno
+	ImVec4 bg = ImVec4(25 / 255.f, 28 / 255.f, 40 / 255.f, 0.88f);       // Fondo oscuro
+	ImVec4 shadow = ImVec4(25 / 255.f, 28 / 255.f, 40 / 255.f, 0.2f);    // Sombra bajo la card
+
+	ImVec2 size(280, 30); 
+
+	// Shadow "card"
+	ImVec2 pos((1980 - size.x) - 60, 20);
+	ImGui::GetForegroundDrawList()->AddRectFilled(
+		ImVec2(pos.x + 2, pos.y + 4), ImVec2(pos.x + size.x + 2, pos.y + size.y + 4),
+		ImGui::ColorConvertFloat4ToU32(shadow), 14, ImDrawFlags_RoundCornersAll);
+
+	// ----- VENTANA -----
+	ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+	ImGui::SetNextWindowSize(size);
+	ImGui::SetNextWindowBgAlpha(bg.w);
+	ImGuiWindowClass window_class;
+	window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_TopMost;
+	ImGui::SetNextWindowClass(&window_class);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 14.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 8));
+	ImGui::Begin("Watermark", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs |
+		ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
+
+	// --- Texto de la app ---
+	ImGui::TextColored(accent, "%s", markText);
+	ImGui::SameLine();
+	// Separador decorativo
+	ImGui::TextDisabled("|");
+
+	// --- Porcentaje de CPU y RAM ---
+	ImGui::SameLine();
+	ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(210, 255, 210, 255));
+	ImGui::Text("CPU: %.1f%%  ", cpuUsagePercent);
+	ImGui::SameLine();
+	ImGui::Text("RAM: %.1f%%", ramUsagePercent);
+	ImGui::PopStyleColor();
+
+	ImGui::End();
+	ImGui::PopStyleVar(2);
+}
+
+
 
 void Drawing::Draw()
 {
+	RenderNotification();
+	drawList();
+	addTask();
+	waterMark(GetCPUUsagePercent() , GetRamUsagePercent());
 	if (Draw1) {
-		RenderNotification();
-		drawList();
-		addTask();
 		ImGuiIO& io = ImGui::GetIO();
 		ImVec2 display_size = io.DisplaySize;
 		float width = 1920;

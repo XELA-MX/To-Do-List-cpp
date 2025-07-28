@@ -222,6 +222,7 @@ void UI::Render()
 
     // Before drawing 
     Drawing::LoadImages();
+    Drawing::InitCPUUsage();
 
     while (!bDone)
     {
@@ -230,8 +231,10 @@ void UI::Render()
         {
             ::TranslateMessage(&msg);
             ::DispatchMessage(&msg);
-            if (msg.message == WM_QUIT)
+            if (msg.message == WM_QUIT) {
                 bDone = true;
+                Drawing::CleanupCPUUsage();
+            }
         }
 
         if (GetAsyncKeyState(VK_END) & 1)
