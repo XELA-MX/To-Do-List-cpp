@@ -45,6 +45,8 @@ static std::string notificationMsg;
 PDH_HQUERY cpuQuery;
 PDH_HCOUNTER cpuTotal;
 
+std::string notificationText = "";
+
 void Drawing::CleanupCPUUsage()
 {
 	if (cpuQuery) {
@@ -263,6 +265,36 @@ void drawList() {
 	}
 }
 
+void soundAlarm() {
+	int cont = 0;
+	ShowNotification(notificationText);
+	while (cont < 6) {
+		Beep(2000, 300);
+		Sleep(200);
+		cont++;
+	}
+}
+
+void checkForTasks() {
+	int hora, minutos;
+	std::time_t t = std::time(nullptr);
+	std::tm now;
+
+	localtime_s(&now, &t);
+	hora = now.tm_hour;
+	minutos = now.tm_min;
+
+	for (size_t i = 0; i < toDoList.size(); ++i) {
+		if (toDoList[i].min == minutos && toDoList[i].hour == hora) {
+			notificationText = toDoList[i].task;
+			toDoList.erase(toDoList.begin() + i);
+			std::thread t(soundAlarm);
+			t.detach();
+		}
+
+	}
+}
+
 void addTask() {
 	if (Draw_Add_Task) {
 		int hora, minutos;
@@ -400,6 +432,7 @@ void Drawing::Draw()
 	drawList();
 	addTask();
 	waterMark(GetCPUUsagePercent() , GetRamUsagePercent());
+	checkForTasks();
 	if (Draw1) {
 		ImGuiIO& io = ImGui::GetIO();
 		ImVec2 display_size = io.DisplaySize;
