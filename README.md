@@ -74,22 +74,7 @@ Build To-Do-List-cpp from the source and install dependencies:
     ❯ cd To-Do-List-cpp
     ```
 
-3. **Install the dependencies:**
-
-echo 'INSERT-INSTALL-COMMAND-HERE'
-
-### Usage
-
-Run the project with:
-
-echo 'INSERT-RUN-COMMAND-HERE'
-
-### Testing
-
-To-do-list-cpp uses the {__test_framework__} test framework. Run the test suite with:
-
-echo 'INSERT-TEST-COMMAND-HERE'
-
+And just compile it with visual studio.
 ---
 
 <div align="left"><a href="#top">⬆ Return</a></div>
